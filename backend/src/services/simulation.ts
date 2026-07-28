@@ -1,6 +1,7 @@
 import { pool } from '../db.js';
 import { config } from '../config.js';
 import { randomPointInCircle } from './geo.js';
+import { snapToRoad } from './osrm.js';
 
 const FIRST_NAMES = [
   'Олександр', 'Дмитро', 'Сергій', 'Андрій', 'Володимир',
@@ -34,14 +35,21 @@ export async function seedWorld(): Promise<number> {
   const lons: number[] = [];
   const lats: number[] = [];
 
+  const rawPoints = Array.from({ length: count }, () =>
+    randomPointInCircle({ lat: config.city.lat, lon: config.city.lon }, config.city.spawnRadiusM),
+  );
+
+  // Прижимаем стартовые точки к дорожной сети через OSRM, чтобы машины не спавнились
+  // во дворах — недоступность OSRM не должна ронять генерацию мира, поэтому берём
+  // allSettled и молча оставляем исходную точку там, где snap не удался.
+  const snapped = await Promise.allSettled(rawPoints.map((p) => snapToRoad(p)));
+
   for (let i = 0; i < count; i++) {
-    const p = randomPointInCircle(
-      { lat: config.city.lat, lon: config.city.lon },
-      config.city.spawnRadiusM,
-    );
+    const result = snapped[i];
+    const point = result.status === 'fulfilled' && result.value ? result.value : rawPoints[i];
     names.push(randomDriverName());
-    lons.push(p.lon);
-    lats.push(p.lat);
+    lons.push(point.lon);
+    lats.push(point.lat);
   }
 
   await pool.query(

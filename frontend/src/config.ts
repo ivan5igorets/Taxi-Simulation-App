@@ -13,4 +13,4 @@ export const TAXI_POLL_MS = 2000;
 export const STATS_POLL_MS = 5000;
 
 /** Диапазон «поиска водителя» по ТЗ, секунды. */
-export const SEARCH_DELAY = { min: 5, max: 50 } as const;
+export const SEARCH_DELAY = { min: 5, max: 10 } as const;

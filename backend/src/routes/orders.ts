@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { pool } from '../db.js';
+import { fetchRoute } from '../services/osrm.js';
 
 interface CreateOrderBody {
   lat: number;
@@ -111,10 +112,38 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
 
         await client.query('COMMIT');
 
+        // Реальный маршрут по улицам запрашивается ПОСЛЕ коммита назначения: сетевой
+        // вызов к OSRM не должен держать соединение и блокировку строки такси.
+        // OSRM недоступен/таймаут → route остаётся NULL, фронт рисует прямую (фолбэк),
+        // а воркер продолжает вести машину по стрелке на клиента (см. worker.ts).
+        const route = await fetchRoute(
+          { lat: taxi.lat, lon: taxi.lon },
+          { lat, lon },
+        );
+
+        let routeCoords: [number, number][] | null = null;
+
+        if (route && route.coordinates.length >= 2) {
+          const wkt = `LINESTRING(${route.coordinates.map((p) => `${p.lon} ${p.lat}`).join(', ')})`;
+          await pool.query(
+            `UPDATE taxis SET route = ST_SetSRID(ST_GeomFromText($2), 4326), route_progress_m = 0
+             WHERE id = $1`,
+            [taxiId, wkt],
+          );
+          await pool.query(
+            `UPDATE orders SET route = ST_SetSRID(ST_GeomFromText($2), 4326), route_distance_m = $3
+             WHERE id = $1`,
+            [order.rows[0].id, wkt, route.distanceM],
+          );
+          routeCoords = route.coordinates.map((p) => [p.lat, p.lon]);
+        }
+
         return {
           orderId: order.rows[0].id,
           createdAt: order.rows[0].created_at,
           distance_m: taxi.distance_m,
+          route: routeCoords,
+          route_distance_m: route?.distanceM ?? null,
           taxi: {
             id: taxi.id,
             driver_name: taxi.driver_name,
@@ -143,12 +172,26 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
               o.status,
               o.assigned_taxi_id,
               o.distance_m AS initial_distance_m,
+              o.route_distance_m,
               ST_Y(o.user_location) AS user_lat,
               ST_X(o.user_location) AS user_lon,
               ST_Distance(
                 t.current_location::geography,
                 o.user_location::geography
-              ) AS current_distance_m
+              ) AS current_distance_m,
+              CASE WHEN o.route IS NOT NULL AND t.route IS NOT NULL THEN
+                -- Остаток пути ПО ДОРОГЕ: длина хвоста линии от текущего прогресса
+                -- такси до конца маршрута заказа. Честнее прямой ST_Distance выше,
+                -- когда машина едет по реальным улицам, а не срезает по прямой.
+                ST_Length(
+                  ST_LineSubstring(
+                    o.route,
+                    LEAST(1.0, t.route_progress_m / NULLIF(ST_Length(o.route::geography), 0)),
+                    1.0
+                  )::geography
+                )
+              ELSE NULL END AS remaining_route_distance_m,
+              CASE WHEN o.route IS NOT NULL THEN ST_AsGeoJSON(o.route) ELSE NULL END AS route_geojson
        FROM orders o
        LEFT JOIN taxis t ON t.id = o.assigned_taxi_id
        WHERE o.id = $1`,
@@ -156,6 +199,16 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     );
 
     if (rows.length === 0) return reply.status(404).send({ error: 'ORDER_NOT_FOUND' });
-    return rows[0];
+
+    const row = rows[0] as Record<string, unknown> & { route_geojson: string | null };
+    const { route_geojson, ...rest } = row;
+
+    const route = route_geojson
+      ? (JSON.parse(route_geojson).coordinates as [number, number][]).map(
+          ([lon, lat]) => [lat, lon] as [number, number],
+        )
+      : null;
+
+    return { ...rest, route };
   });
 }

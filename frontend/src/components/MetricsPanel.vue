@@ -82,7 +82,7 @@ GROUP BY bucket ORDER BY bucket;`;
             PostGIS · ST_Distance
           </div>
           <div class="text-2xl font-semibold tabular-nums">{{ distanceLabel }}</div>
-          <div class="text-xs text-slate-400 mt-1">Реальное расстояние до клиента</div>
+          <div class="text-xs text-slate-400 mt-1">Остаток пути по дороге до клиента</div>
         </div>
 
         <!-- TimescaleDB: средняя скорость -->

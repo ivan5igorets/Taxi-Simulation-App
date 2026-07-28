@@ -4,6 +4,7 @@ import {
   api,
   type OrderResponse,
   type OrderState,
+  type RoutePoints,
   type TelemetryStats,
 } from '../api/client';
 import { SEARCH_DELAY, STATS_POLL_MS } from '../config';
@@ -23,9 +24,22 @@ export function useOrder() {
 
   const isBusy = computed(() => phase.value === 'searching' || phase.value === 'assigned');
 
-  /** Текущее расстояние до клиента: из живого состояния заказа, иначе — из момента назначения. */
+  /**
+   * Текущее расстояние до клиента. Приоритет — остаток пути ПО ДОРОГЕ
+   * (ST_LineSubstring в /api/orders/:id): честнее прямой ST_Distance, когда есть
+   * реальный маршрут OSRM. Без маршрута (OSRM недоступен) — фолбэк на прямую.
+   */
   const distanceM = computed(
-    () => orderState.value?.current_distance_m ?? order.value?.distance_m ?? null,
+    () =>
+      orderState.value?.remaining_route_distance_m ??
+      orderState.value?.current_distance_m ??
+      order.value?.distance_m ??
+      null,
+  );
+
+  /** Маршрут для отрисовки на карте: из живого состояния заказа, иначе — из ответа на создание. */
+  const route = computed<RoutePoints | null>(
+    () => orderState.value?.route ?? order.value?.route ?? null,
   );
 
   function clearTimers(): void {
@@ -113,6 +127,7 @@ export function useOrder() {
     error,
     isBusy,
     distanceM,
+    route,
     callTaxi,
     reset,
   };

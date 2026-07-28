@@ -36,4 +36,18 @@ export const config = {
     /** Ближе этого расстояния к клиенту заказ считается выполненным. */
     arrivalThresholdM: 50,
   },
+
+  osrm: {
+    baseUrl: process.env.OSRM_BASE_URL ?? 'https://router.project-osrm.org',
+    timeoutMs: num('OSRM_TIMEOUT_MS', 3000),
+    /** Сколько подряд идущих сбоев открывает circuit breaker. */
+    failureThreshold: 3,
+    /** На сколько мс размыкаем цепь после failureThreshold сбоев подряд. */
+    circuitOpenMs: 60_000,
+    /** Не больше стольки новых маршрутов OSRM за один тик воркера. */
+    maxRouteRequestsPerTick: 2,
+  },
+
+  /** Воркер засыпает после стольки мс без единого /api/* запроса. */
+  workerIdleTimeoutMs: num('WORKER_IDLE_TIMEOUT_MS', 10 * 60 * 1000),
 } as const;

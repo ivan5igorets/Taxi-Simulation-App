@@ -16,6 +16,7 @@ const {
   stats,
   error,
   distanceM,
+  route,
   callTaxi,
   reset: resetOrder,
 } = useOrder();
@@ -83,7 +84,12 @@ onMounted(() => {
     </header>
 
     <main class="flex-1 relative min-h-0">
-      <MapView :taxis="taxis" :user-point="userPoint" :assigned-taxi-id="assignedTaxiId" />
+      <MapView
+        :taxis="taxis"
+        :user-point="userPoint"
+        :assigned-taxi-id="assignedTaxiId"
+        :route="route"
+      />
 
       <!-- Легенда -->
       <div

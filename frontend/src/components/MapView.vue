@@ -9,12 +9,19 @@ const props = defineProps<{
   taxis: Taxi[];
   userPoint: { lat: number; lon: number } | null;
   assignedTaxiId: number | null;
+  /** Реальный маршрут по улицам (OSRM), [lat, lon][]; null — OSRM недоступен. */
+  route: [number, number][] | null;
 }>();
 
 const mapEl = ref<HTMLDivElement | null>(null);
 let map: L.Map | null = null;
 let userMarker: L.Marker | null = null;
-let routeLine: L.Polyline | null = null;
+/** Фолбэк-линия (прямая), когда OSRM недоступен и route === null. */
+let straightLine: L.Polyline | null = null;
+/** Пройденная часть реального маршрута — тусклая. */
+let routeDoneLine: L.Polyline | null = null;
+/** Оставшаяся часть реального маршрута — яркая. */
+let routeRemainingLine: L.Polyline | null = null;
 
 // Маркеры переиспользуются по id: пересоздание на каждом опросе сбрасывало бы
 // анимацию и «дёргало» карту.
@@ -79,30 +86,90 @@ function syncTaxis(): void {
   syncRoute();
 }
 
-/** Линия от назначенного такси до клиента — визуализация ST_Distance. */
+/** Индекс ближайшей к точке `p` вершины маршрута — грубая, но дешёвая привязка. */
+function nearestVertexIndex(path: [number, number][], p: { lat: number; lon: number }): number {
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < path.length; i++) {
+    const [lat, lon] = path[i];
+    const d = (lat - p.lat) ** 2 + (lon - p.lon) ** 2;
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function clearRouteLines(): void {
+  straightLine?.remove();
+  straightLine = null;
+  routeDoneLine?.remove();
+  routeDoneLine = null;
+  routeRemainingLine?.remove();
+  routeRemainingLine = null;
+}
+
+/**
+ * Маршрут назначенного такси до клиента.
+ *
+ * Есть реальный путь по улицам (OSRM ответил) — рисуем его сплошной линией,
+ * разрезанной в точке такси: пройденная часть тусклая, остаток яркий — видно,
+ * как машина «съедает» дорогу. OSRM недоступен (route === null) — фолбэк на
+ * пунктирную прямую, как было раньше.
+ */
 function syncRoute(): void {
   if (!map) return;
   const assigned = props.taxis.find((t) => t.id === props.assignedTaxiId);
 
   if (!assigned || !props.userPoint) {
-    routeLine?.remove();
-    routeLine = null;
+    clearRouteLines();
     return;
   }
 
-  const path: L.LatLngExpression[] = [
-    [assigned.lat, assigned.lon],
-    [props.userPoint.lat, props.userPoint.lon],
-  ];
+  if (!props.route || props.route.length < 2) {
+    routeDoneLine?.remove();
+    routeDoneLine = null;
+    routeRemainingLine?.remove();
+    routeRemainingLine = null;
 
-  if (routeLine) {
-    routeLine.setLatLngs(path);
+    const path: L.LatLngExpression[] = [
+      [assigned.lat, assigned.lon],
+      [props.userPoint.lat, props.userPoint.lon],
+    ];
+    if (straightLine) {
+      straightLine.setLatLngs(path);
+    } else {
+      straightLine = L.polyline(path, {
+        color: '#3b82f6',
+        weight: 3,
+        dashArray: '8 6',
+        opacity: 0.8,
+      }).addTo(map);
+    }
+    return;
+  }
+
+  straightLine?.remove();
+  straightLine = null;
+
+  const cut = nearestVertexIndex(props.route, assigned);
+  const done = props.route.slice(0, cut + 1);
+  const remaining = props.route.slice(cut);
+
+  if (routeDoneLine) {
+    routeDoneLine.setLatLngs(done);
   } else {
-    routeLine = L.polyline(path, {
+    routeDoneLine = L.polyline(done, { color: '#3b82f6', weight: 3, opacity: 0.25 }).addTo(map);
+  }
+
+  if (routeRemainingLine) {
+    routeRemainingLine.setLatLngs(remaining);
+  } else {
+    routeRemainingLine = L.polyline(remaining, {
       color: '#3b82f6',
-      weight: 3,
-      dashArray: '8 6',
-      opacity: 0.8,
+      weight: 4,
+      opacity: 0.9,
     }).addTo(map);
   }
 }
@@ -157,6 +224,7 @@ onUnmounted(() => {
 
 watch(() => props.taxis, syncTaxis);
 watch(() => props.assignedTaxiId, syncTaxis);
+watch(() => props.route, syncRoute);
 watch(() => props.userPoint, syncUser, { deep: true });
 </script>
 

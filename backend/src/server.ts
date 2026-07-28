@@ -7,13 +7,22 @@ import { orderRoutes } from './routes/orders.js';
 import { telemetryRoutes } from './routes/telemetry.js';
 import { resetRoutes } from './routes/reset.js';
 import { fleetSize, seedWorld } from './services/simulation.js';
-import { startWorker, stopWorker } from './services/worker.js';
+import { idleForMs, isWorkerRunning, noteActivity, stopWorker } from './services/worker.js';
 
 const app = Fastify({
   logger: {
     level: 'info',
     transport: { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } },
   },
+});
+
+// Автостоп воркера по простою: любой /api/* запрос продлевает активность и будит
+// воркер, если он спал. /api/health намеренно исключён — иначе внешний healthcheck
+// или мониторинг будет держать симуляцию вечно живой, сводя автостоп на нет.
+app.addHook('onRequest', async (request) => {
+  if (request.url.startsWith('/api/') && request.url !== '/api/health') {
+    noteActivity();
+  }
 });
 
 await app.register(cors, { origin: true });
@@ -24,7 +33,12 @@ await app.register(resetRoutes);
 
 app.get('/api/health', async () => {
   const { rows } = await pool.query<{ now: string }>('SELECT now() AS now');
-  return { ok: true, db: rows[0].now, city: config.city };
+  return {
+    ok: true,
+    db: rows[0].now,
+    city: config.city,
+    worker: { running: isWorkerRunning(), idleForMs: idleForMs() },
+  };
 });
 
 async function bootstrap(): Promise<void> {
@@ -37,7 +51,9 @@ async function bootstrap(): Promise<void> {
     app.log.info({ taxis: existing }, 'reusing existing world');
   }
 
-  startWorker();
+  // Воркер НЕ стартует здесь: по требованию — включается только по первому /api/*
+  // запросу пользователя (см. noteActivity в onRequest-хуке выше) и засыпает сам
+  // через config.workerIdleTimeoutMs простоя (см. tick() в worker.ts).
   await app.listen({ port: config.port, host: '0.0.0.0' });
 }
 

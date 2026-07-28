@@ -8,10 +8,16 @@ export interface Taxi {
   lon: number;
 }
 
+/** Точки маршрута в порядке [lat, lon] — готовы для Leaflet L.polyline. */
+export type RoutePoints = [number, number][];
+
 export interface OrderResponse {
   orderId: number;
   createdAt: string;
   distance_m: number;
+  /** Реальный путь по улицам (OSRM); null — OSRM недоступен, используется прямая. */
+  route: RoutePoints | null;
+  route_distance_m: number | null;
   taxi: { id: number; driver_name: string; lat: number; lon: number };
 }
 
@@ -20,9 +26,13 @@ export interface OrderState {
   status: 'PENDING' | 'ASSIGNED' | 'COMPLETED';
   assigned_taxi_id: number | null;
   initial_distance_m: number;
+  route_distance_m: number | null;
+  /** Остаток пути по дороге от текущей позиции такси до клиента; null без маршрута. */
+  remaining_route_distance_m: number | null;
   user_lat: number;
   user_lon: number;
   current_distance_m: number | null;
+  route: RoutePoints | null;
 }
 
 export interface TelemetryBucket {
