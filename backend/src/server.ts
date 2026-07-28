@@ -9,10 +9,20 @@ import { resetRoutes } from './routes/reset.js';
 import { fleetSize, seedWorld } from './services/simulation.js';
 import { idleForMs, isWorkerRunning, noteActivity, stopWorker } from './services/worker.js';
 
+// pino-pretty — devDependency, в прод-образе её нет (npm ci --omit=dev). В dev она
+// красиво форматирует логи в терминале; в проде обычный JSON от pino — без транспорта,
+// он всегда доступен и его достаточно (логи разбирает `docker compose logs`/агрегатор).
+const isDev = process.env.NODE_ENV !== 'production';
+
 const app = Fastify({
   logger: {
     level: 'info',
-    transport: { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } },
+    ...(isDev && {
+      transport: {
+        target: 'pino-pretty',
+        options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' },
+      },
+    }),
   },
 });
 
