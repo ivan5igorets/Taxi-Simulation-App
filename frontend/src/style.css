@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+
+/* Leaflet рисует свой фон белым — на тёмной теме это мигает при загрузке тайлов. */
+.leaflet-container {
+  background: #0f172a;
+}
+
+/* divIcon по умолчанию получает белый фон и рамку — убираем. */
+.taxi-marker,
+.user-marker {
+  background: transparent;
+  border: none;
+}
