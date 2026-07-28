@@ -51,10 +51,14 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      # 127.0.0.1, не localhost: alpine резолвит localhost сначала на ::1 (IPv6),
+      # а nginx слушает только 0.0.0.0:80 (чистый IPv4) — wget получал стабильный
+      # "Connection refused" по IPv6 и ни разу не пробовал IPv4, здоровым контейнер
+      # не становился никогда, а autoheal рестартовал его раз в минуту.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
       interval: 10s
       timeout: 3s
-      start_period: 10s
+      start_period: 15s
       retries: 3
     labels:
       - autoheal=true

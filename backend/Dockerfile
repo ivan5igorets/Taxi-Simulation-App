@@ -31,7 +31,7 @@ COPY package.json ./
 
 EXPOSE 3100
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
-  CMD curl -fs http://localhost:3100/api/health || exit 1
+# Healthcheck задаётся в docker-compose.yml — единый источник истины для всех
+# сервисов, чтобы не рассинхронизироваться с Dockerfile (как уже случилось с frontend).
 
 CMD ["node", "dist/server.js"]

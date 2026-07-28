@@ -15,7 +15,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost/ >/dev/null || exit 1
+# Healthcheck задаётся в docker-compose.yml, не здесь — там же настройки backend
+# и db, единый источник истины. Дублирование в обоих местах уже приводило к
+# рассинхрону (Dockerfile тут не читался, потому что compose его перекрывает).
 
 CMD ["nginx", "-g", "daemon off;"]
